@@ -181,6 +181,12 @@ EXAMPLES = r'''
     state: file
     modification_time: now
     access_time: now
+
+- name: Set access time based on seconds from epoch value
+  file:
+    path: /etc/another_file
+    state: file
+    access_time: '{{ "%Y%m%d%H%M.%S" | strftime(stat_var.stat.atime) }}'
 '''
 RETURN = r'''
 
@@ -470,9 +476,9 @@ def ensure_absent(path):
                                                           'path': path})
 
         diff = initial_diff(path, 'absent', prev_state)
-        result.update({'path': path, 'changed': True, 'diff': diff})
+        result.update({'path': path, 'changed': True, 'diff': diff, 'state': 'absent'})
     else:
-        result.update({'path': path, 'changed': False})
+        result.update({'path': path, 'changed': False, 'state': 'absent'})
 
     return result
 

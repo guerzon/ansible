@@ -226,7 +226,9 @@ class StrategyBase:
         # make sure that all of the hosts are advanced to their final task.
         # This should be safe, as everything should be ITERATING_COMPLETE by
         # this point, though the strategy may not advance the hosts itself.
-        [iterator.get_next_task_for_host(host) for host in self._inventory.get_hosts(iterator._play.hosts) if host.name not in self._tqm._unreachable_hosts]
+
+        inv_hosts = self._inventory.get_hosts(iterator._play.hosts, order=iterator._play.order)
+        [iterator.get_next_task_for_host(host) for host in inv_hosts if host.name not in self._tqm._unreachable_hosts]
 
         # save the failed/unreachable hosts, as the run_handlers()
         # method will clear that information during its execution
@@ -458,9 +460,6 @@ class StrategyBase:
                     else:
                         iterator.mark_host_failed(original_host)
 
-                    # increment the failed count for this host
-                    self._tqm._stats.increment('failures', original_host.name)
-
                     # grab the current state and if we're iterating on the rescue portion
                     # of a block then we save the failed task in a special var for use
                     # within the rescue/always
@@ -470,6 +469,7 @@ class StrategyBase:
                         self._tqm._failed_hosts[original_host.name] = True
 
                     if state and iterator.get_active_state(state).run_state == iterator.ITERATING_RESCUE:
+                        self._tqm._stats.increment('rescued', original_host.name)
                         self._variable_manager.set_nonpersistent_facts(
                             original_host,
                             dict(
@@ -477,8 +477,11 @@ class StrategyBase:
                                 ansible_failed_result=task_result._result,
                             ),
                         )
+                    else:
+                        self._tqm._stats.increment('failures', original_host.name)
                 else:
                     self._tqm._stats.increment('ok', original_host.name)
+                    self._tqm._stats.increment('ignored', original_host.name)
                     if 'changed' in task_result._result and task_result._result['changed']:
                         self._tqm._stats.increment('changed', original_host.name)
                 self._tqm.send_callback('v2_runner_on_failed', task_result, ignore_errors=ignore_errors)

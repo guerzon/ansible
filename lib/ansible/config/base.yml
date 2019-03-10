@@ -1308,6 +1308,14 @@ DISPLAY_SKIPPED_HOSTS:
   ini:
   - {key: display_skipped_hosts, section: defaults}
   type: boolean
+DOCSITE_ROOT_URL:
+  name: Root docsite URL
+  default: https://docs.ansible.com/ansible/
+  description: Root docsite URL used to generate docs URLs in warning/error text;
+               must be an absolute URL with valid scheme and trailing slash.
+  ini:
+  - {key: docsite_root_url, section: defaults}
+  version_added: "2.8"
 ERROR_ON_MISSING_HANDLER:
   name: Missing handler error
   default: True
@@ -1316,6 +1324,32 @@ ERROR_ON_MISSING_HANDLER:
   ini:
   - {key: error_on_missing_handler, section: defaults}
   type: boolean
+CONNECTION_FACTS_MODULES:
+  name: Map of connections to fact modules
+  default:
+    eos: eos_facts
+    frr: frr_facts
+    ios: ios_facts
+    iosxr: iosxr_facts
+    junos: junos_facts
+    nxos: nxos_facts
+    vyos: vyos_facts
+  description: "Which modules to run during a play's fact gathering stage based on connection"
+  env: [{name: ANSIBLE_CONNECTION_FACTS_MODULES}]
+  ini:
+    - {key: connection_facts_modules, section: defaults}
+  type: dict
+FACTS_MODULES:
+  name: Gather Facts Modules
+  default:
+    - smart
+  description: "Which modules to run during a play's fact gathering stage, using the default of 'smart' will try to figure it out based on connection type."
+  env: [{name: ANSIBLE_FACTS_MODULES}]
+  ini:
+    - {key: facts_modules, section: defaults}
+  type: list
+  vars:
+    - name: ansible_facts_modules
 GALAXY_IGNORE_CERTS:
   name: Galaxy validate certs
   default: False
@@ -1382,6 +1416,67 @@ HOST_PATTERN_MISMATCH:
   - {key: host_pattern_mismatch, section: inventory}
   choices: ['warning', 'error', 'ignore']
   version_added: "2.8"
+INTERPRETER_PYTHON:
+  name: Python interpreter path (or automatic discovery behavior) used for module execution
+  default: auto_legacy
+  env: [{name: ANSIBLE_PYTHON_INTERPRETER}]
+  ini:
+  - {key: interpreter_python, section: defaults}
+  vars:
+  - {name: ansible_python_interpreter}
+  version_added: "2.8"
+  description:
+  - Path to the Python interpreter to be used for module execution on remote targets, or an automatic discovery mode.
+    Supported discovery modes are ``auto``, ``auto_silent``, and ``auto_legacy`` (the default). All discovery modes
+    employ a lookup table to use the included system Python (on distributions known to include one), falling back to a
+    fixed ordered list of well-known Python interpreter locations if a platform-specific default is not available. The
+    fallback behavior will issue a warning that the interpreter should be set explicitly (since interpreters installed
+    later may change which one is used). This warning behavior can be disabled by setting ``auto_silent``. The default
+    value of ``auto_legacy`` provides all the same behavior, but for backwards-compatibility with older Ansible releases
+    that always defaulted to ``/usr/bin/python``, will use that interpreter if present (and issue a warning that the
+    default behavior will change to that of ``auto`` in a future Ansible release.
+INTERPRETER_PYTHON_DISTRO_MAP:
+  name: Mapping of known included platform pythons for various Linux distros
+  default:
+    centos: &rhelish
+      '6': /usr/bin/python
+      '8': /usr/libexec/platform-python
+    fedora:
+      '23': /usr/bin/python3
+    redhat: *rhelish
+    rhel: *rhelish
+    ubuntu:
+      '14': /usr/bin/python
+      '16': /usr/bin/python3
+  version_added: "2.8"
+  # FUTURE: add inventory override once we're sure it can't be abused by a rogue target
+  # FUTURE: add a platform layer to the map so we could use for, eg, freebsd/macos/etc?
+INTERPRETER_PYTHON_FALLBACK:
+  name: Ordered list of Python interpreters to check for in discovery
+  default:
+  - /usr/bin/python
+  - python3.7
+  - python3.6
+  - python3.5
+  - python2.7
+  - python2.6
+  - /usr/libexec/platform-python
+  - /usr/bin/python3
+  - python
+  # FUTURE: add inventory override once we're sure it can't be abused by a rogue target
+  version_added: "2.8"
+TRANSFORM_INVALID_GROUP_CHARS:
+  name: Transform invalid characters in group names
+  default: False
+  description:
+    - Make ansible transform invalid characters in group names supplied by inventory sources.
+    - If 'false' it will allow for the group name but warn about the issue.
+    - When 'true' it will replace any invalid charachters with '_' (underscore).
+  env: [{name: ANSIBLE_TRANSFORM_INVALID_GROUP_CHARS}]
+  ini:
+  - {key: force_valid_group_names, section: defaults}
+  type: bool
+  version_added: '2.8'
 INVALID_TASK_ATTRIBUTE_FAILED:
   name: Controls whether invalid attributes for a task result in errors instead of warnings
   default: True
@@ -1590,9 +1685,23 @@ PLUGIN_FILTERS_CFG:
   - key: plugin_filters_cfg
     section: defaults
   type: path
+PYTHON_MODULE_RLIMIT_NOFILE:
+  name: Adjust maximum file descriptor soft limit during Python module execution
+  description:
+  - Attempts to set RLIMIT_NOFILE soft limit to the specified value when executing Python modules (can speed up subprocess usage on
+    Python 2.x. See https://bugs.python.org/issue11284). The value will be limited by the existing hard limit. Default
+    value of 0 does not attempt to adjust existing system-defined limits.
+  default: 0
+  env:
+  - {name: ANSIBLE_PYTHON_MODULE_RLIMIT_NOFILE}
+  ini:
+  - {key: python_module_rlimit_nofile, section: defaults}
+  vars:
+  - {name: ansible_python_module_rlimit_nofile}
+  version_added: '2.8'
 RETRY_FILES_ENABLED:
   name: Retry files
-  default: True
+  default: False
   description: This controls whether a failed Ansible playbook should create a .retry file.
   env: [{name: ANSIBLE_RETRY_FILES_ENABLED}]
   ini:
@@ -1690,4 +1799,30 @@ NETCONF_SSH_CONFIG:
   - {key: ssh_config, section: netconf_connection}
   yaml: {key: netconf_connection.ssh_config}
   default: null
+STRING_CONVERSION_ACTION:
+  version_added: '2.8'
+  description:
+    - Action to take when a module parameter value is converted to a string (this does not affect variables).
+      For string parameters, values such as '1.00', "['a', 'b',]", and 'yes', 'y', etc.
+      will be converted by the YAML parser unless fully quoted.
+    - Valid options are 'error', 'warn', and 'ignore'.
+    - Since 2.8, this option defaults to 'warn' but will change to 'error' in 2.12.
+  default: 'warn'
+  env:
+    - name: ANSIBLE_STRING_CONVERSION_ACTION
+  ini:
+    - section: defaults
+      key: string_conversion_action
+  type: string
+VERBOSE_TO_STDERR:
+  version_added: '2.8'
+  description:
+    - Force 'verbose' option to use stderr instead of stdout
+  default: False
+  env:
+    - name: ANSIBLE_VERBOSE_TO_STDERR
+  ini:
+    - section: defaults
+      key: verbose_to_stderr
+  type: bool
 ...

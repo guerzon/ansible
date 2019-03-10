@@ -30,7 +30,8 @@ options:
     description:
       - The name of the network to inspect.
       - When identifying an existing network name may be a name or a long or short network ID.
-    required: true
+    type: str
+    required: yes
 extends_documentation_fragment:
   - docker
   - docker.docker_py_1_documentation
@@ -55,7 +56,7 @@ EXAMPLES = '''
 
 - name: Print information about network
   debug:
-    var: result.docker_network
+    var: result.network
   when: result.exists
 '''
 
@@ -66,7 +67,7 @@ exists:
     type: bool
     returned: always
     sample: true
-docker_network:
+network:
     description:
       - Facts representing the current state of the network. Matches the docker inspection output.
       - Will be C(None) if network does not exist.
@@ -121,7 +122,7 @@ def main():
     client.module.exit_json(
         changed=False,
         exists=(True if network else False),
-        docker_network=network,
+        network=network,
     )
 
 

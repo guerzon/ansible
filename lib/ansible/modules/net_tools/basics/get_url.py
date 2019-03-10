@@ -7,8 +7,6 @@
 from __future__ import absolute_import, division, print_function
 __metaclass__ = type
 
-# see examples/playbooks/get_url.yml
-
 ANSIBLE_METADATA = {'metadata_version': '1.1',
                     'status': ['stableinterface'],
                     'supported_by': 'core'}
@@ -120,10 +118,10 @@ options:
   headers:
     description:
         - Add custom HTTP headers to a request in hash/dict format.
-        - The hash/dict format was added in 2.6.
+        - The hash/dict format was added in Ansible 2.6.
         - Previous versions used a C("key:value,key:value") string format.
         - The C("key:value,key:value") string format is deprecated and will be removed in version 2.10.
-    type: str
+    type: raw
     version_added: '2.0'
   url_username:
     description:
@@ -154,14 +152,19 @@ options:
     description:
       - PEM formatted certificate chain file to be used for SSL client authentication.
       - This file can also include the key as well, and if the key is included, C(client_key) is not required.
-    type: str
+    type: path
     version_added: '2.4'
   client_key:
     description:
       - PEM formatted file that contains your private key to be used for SSL client authentication.
       - If C(client_cert) contains both the certificate and key, this option is not required.
-    type: str
+    type: path
     version_added: '2.4'
+  http_agent:
+    description:
+      - Header to identify as, generally appears in web server logs.
+    type: str
+    default: ansible-httpget
 # informational: requirements for nodes
 extends_documentation_fragment:
     - files
@@ -563,12 +566,6 @@ def main():
             filename = url_filename(info['url'])
         dest = os.path.join(dest, filename)
 
-    # If the remote URL exists, we're done with check mode
-    if module.check_mode:
-        os.remove(tmpsrc)
-        result['changed'] = True
-        module.exit_json(msg=info.get('msg', ''), **result)
-
     # raise an error if there is no tmpsrc file
     if not os.path.exists(tmpsrc):
         os.remove(tmpsrc)
@@ -595,6 +592,13 @@ def main():
         if not os.access(os.path.dirname(dest), os.W_OK):
             os.remove(tmpsrc)
             module.fail_json(msg="Destination %s is not writable" % (os.path.dirname(dest)), **result)
+
+    if module.check_mode:
+        if os.path.exists(tmpsrc):
+            os.remove(tmpsrc)
+        result['changed'] = ('checksum_dest' not in result or
+                             result['checksum_src'] != result['checksum_dest'])
+        module.exit_json(msg=info.get('msg', ''), **result)
 
     backup_file = None
     if result['checksum_src'] != result['checksum_dest']:

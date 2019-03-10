@@ -46,7 +46,7 @@ options:
   exclude_path:
     description:
       - Remote absolute path, glob, or list of paths or globs for the file or files to exclude from the archive.
-    type: str
+    type: list
     version_added: '2.4'
   remove:
     description:
@@ -407,7 +407,7 @@ def main():
                     errors.append(path)
 
             if errors:
-                module.fail_json(dest=dest, msg='Error deleting some source files: ' + str(e), files=errors)
+                module.fail_json(dest=dest, msg='Error deleting some source files: ', files=errors)
 
         # Rudimentary check: If size changed then file changed. Not perfect, but easy.
         if not check_mode and os.path.getsize(dest) != size:

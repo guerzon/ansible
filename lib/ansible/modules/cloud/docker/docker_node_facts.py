@@ -32,16 +32,14 @@ options:
       - If empty then return information of all nodes in Swarm cluster.
       - When identifying the node use either the hostname of the node (as registered in Swarm) or node ID.
       - If I(self) is C(true) then this parameter is ignored.
-    required: false
     type: list
   self:
     description:
       - If C(true), queries the node (i.e. the docker daemon) the module communicates with.
       - If C(true) then I(name) is ignored.
       - If C(false) then query depends on I(name) presence and value.
-    required: false
     type: bool
-    default: false
+    default: no
 extends_documentation_fragment:
   - docker
   - docker.docker_py_1_documentation
@@ -50,7 +48,7 @@ author:
   - Piotr Wojciechowski (@wojciechowskipiotr)
 
 requirements:
-  - "docker-py >= 1.10.0"
+  - "docker-py >= 2.4.0"
   - "Docker API >= 1.24"
 '''
 
@@ -78,7 +76,7 @@ EXAMPLES = '''
 '''
 
 RETURN = '''
-nodes_facts:
+nodes:
     description:
       - Facts representing the current state of the nodes. Matches the C(docker node inspect) output.
       - Can contain multiple entries if more than one node provided in I(name), or I(name) is not provided.
@@ -126,23 +124,23 @@ def get_node_facts(client):
 def main():
     argument_spec = dict(
         name=dict(type='list', elements='str'),
-        self=dict(type='bool', default='False'),
+        self=dict(type='bool', default=False),
     )
 
     client = AnsibleDockerSwarmClient(
         argument_spec=argument_spec,
         supports_check_mode=True,
-        min_docker_version='1.10.0',
+        min_docker_version='2.4.0',
         min_docker_api_version='1.24',
     )
 
     client.fail_task_if_not_swarm_manager()
 
-    node = get_node_facts(client)
+    nodes = get_node_facts(client)
 
     client.module.exit_json(
         changed=False,
-        nodes_facts=node,
+        nodes=nodes,
     )
 
 

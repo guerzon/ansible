@@ -21,10 +21,11 @@ short_description: Retrieves facts about docker host and lists of objects of the
 description:
   - Retrieves facts about a docker host.
   - Essentially returns the output of C(docker system info).
-  - Returns lists of objects names for the services - images, networks, volumes, containers.
-  - Returns disk usage information.
-  - The output differs depending on API version available on docker host.
-  - Must be executed on a host running a Docker, otherwise the module will fail.
+  - The module also allows to list object names for containers, images, networks and volumes.
+    It also allows to query information on disk usage.
+  - The output differs depending on API version of the docker daemon.
+  - If the docker daemon cannot be contacted or does not meet the API version requirements,
+    the module will fail.
 
 version_added: "2.8"
 
@@ -136,40 +137,46 @@ EXAMPLES = '''
 '''
 
 RETURN = '''
-docker_host_facts:
+can_talk_to_docker:
+    description:
+      - Will be C(true) if the module can talk to the docker daemon.
+    returned: both on success and on error
+    type: bool
+
+host_facts:
     description:
       - Facts representing the basic state of the docker host. Matches the C(docker system info) output.
     returned: always
     type: dict
-docker_volumes_list:
+volumes:
     description:
       - List of dict objects containing the basic information about each volume.
         Keys matches the C(docker volume ls) output unless I(verbose_output=yes).
         See description for I(verbose_output).
     returned: When I(volumes) is C(yes)
     type: list
-docker_networks_list:
+networks:
     description:
       - List of dict objects containing the basic information about each network.
         Keys matches the C(docker network ls) output unless I(verbose_output=yes).
         See description for I(verbose_output).
     returned: When I(networks) is C(yes)
     type: list
-docker_containers_list:
+containers:
     description:
       - List of dict objects containing the basic information about each container.
         Keys matches the C(docker container ls) output unless I(verbose_output=yes).
         See description for I(verbose_output).
     returned: When I(containers) is C(yes)
     type: list
-docker_images_list:
+images:
     description:
       - List of dict objects containing the basic information about each image.
         Keys matches the C(docker image ls) output unless I(verbose_output=yes).
         See description for I(verbose_output).
     returned: When I(images) is C(yes)
     type: list
-docker_disk_usage:
+disk_usage:
     description:
       - Information on summary disk usage by images, containers and volumes on docker host
         unless I(verbose_output=yes). See description for I(verbose_output).
@@ -202,14 +209,14 @@ class DockerHostManager(DockerBaseClass):
 
         listed_objects = ['volumes', 'networks', 'containers', 'images']
 
-        self.results['docker_host_facts'] = self.get_docker_host_facts()
+        self.results['host_facts'] = self.get_docker_host_facts()
 
         if self.client.module.params['disk_usage']:
-            self.results['docker_disk_usage'] = self.get_docker_disk_usage_facts()
+            self.results['disk_usage'] = self.get_docker_disk_usage_facts()
 
         for docker_object in listed_objects:
             if self.client.module.params[docker_object]:
-                returned_name = "docker_" + docker_object + "_list"
+                returned_name = docker_object
                 filter_name = docker_object + "_filters"
                 filters = clean_dict_booleans_for_docker_api(client.module.params.get(filter_name))
                 self.results[returned_name] = self.get_docker_items_list(docker_object, filters)
@@ -218,16 +225,16 @@ class DockerHostManager(DockerBaseClass):
         try:
             return self.client.info()
         except APIError as exc:
-            self.client.fail_json(msg="Error inspecting docker host: %s" % to_native(exc))
+            self.client.fail("Error inspecting docker host: %s" % to_native(exc))
 
     def get_docker_disk_usage_facts(self):
         try:
             if self.verbose_output:
                 return self.client.df()
             else:
-                return dict(LayerSize=self.client.df()['LayersSize'])
+                return dict(LayersSize=self.client.df()['LayersSize'])
         except APIError as exc:
-            self.client.fail_json(msg="Error inspecting docker host: %s" % to_native(exc))
+            self.client.fail("Error inspecting docker host: %s" % to_native(exc))
 
     def get_docker_items_list(self, docker_object=None, filters=None, verbose=False):
         items = None
@@ -248,8 +255,8 @@ class DockerHostManager(DockerBaseClass):
             elif docker_object == 'volumes':
                 items = self.client.volumes(filters=filters)
         except APIError as exc:
-            self.client.fail_json(msg="Error inspecting docker host for object '%s': %s" %
-                                      (docker_object, to_native(exc)))
+            self.client.fail("Error inspecting docker host for object '%s': %s" %
+                             (docker_object, to_native(exc)))
 
         if self.verbose_output:
             if docker_object != 'volumes':
@@ -299,11 +306,14 @@ def main():
         supports_check_mode=True,
         min_docker_version='1.10.0',
         min_docker_api_version='1.21',
+        fail_results=dict(
+            can_talk_to_docker=False,
+        ),
     )
+    client.fail_results['can_talk_to_docker'] = True
 
     results = dict(
         changed=False,
-        docker_host_facts=[]
     )
 
     DockerHostManager(client, results)

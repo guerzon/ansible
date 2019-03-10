@@ -23,8 +23,8 @@ options:
   name:
     description:
       - Name of the volume to inspect.
-    required: true
     type: str
+    required: yes
     aliases:
       - volume_name
 
@@ -52,7 +52,7 @@ EXAMPLES = '''
 
 - name: Print information about volume
   debug:
-    var: result.docker_volume
+    var: result.volume
   when: result.exists
 '''
 
@@ -63,7 +63,7 @@ exists:
     type: bool
     returned: always
     sample: true
-docker_volume:
+volume:
     description:
       - Volume inspection results for the affected volume.
       - Will be C(None) if volume does not exist.
@@ -95,7 +95,7 @@ def get_existing_volume(client, volume_name):
     except NotFound as dummy:
         return None
     except Exception as exc:
-        client.module.fail_json(msg="Error inspecting volume: %s" % exc)
+        client.fail("Error inspecting volume: %s" % exc)
 
 
 def main():
@@ -115,7 +115,7 @@ def main():
     client.module.exit_json(
         changed=False,
         exists=(True if volume else False),
-        docker_volume=volume,
+        volume=volume,
     )
 
 

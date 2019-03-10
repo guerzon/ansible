@@ -45,7 +45,7 @@ from ansible.module_utils.six import iteritems, string_types, integer_types, rer
 from ansible.module_utils.six.moves import reduce, shlex_quote
 from ansible.module_utils._text import to_bytes, to_native, to_text
 from ansible.module_utils.common.collections import is_sequence
-from ansible.module_utils.common._collections_compat import MutableMapping
+from ansible.module_utils.common._collections_compat import Mapping, MutableMapping
 from ansible.parsing.ajson import AnsibleJSONEncoder
 from ansible.parsing.yaml.dumper import AnsibleDumper
 from ansible.utils.display import Display
@@ -76,10 +76,10 @@ def to_json(a, *args, **kw):
     return json.dumps(a, cls=AnsibleJSONEncoder, *args, **kw)
 
 
-def to_nice_json(a, indent=4, *args, **kw):
+def to_nice_json(a, indent=4, sort_keys=True, *args, **kw):
     '''Make verbose, human readable JSON'''
     try:
-        return json.dumps(a, indent=indent, sort_keys=True, separators=(',', ': '), cls=AnsibleJSONEncoder, *args, **kw)
+        return json.dumps(a, indent=indent, sort_keys=sort_keys, separators=(',', ': '), cls=AnsibleJSONEncoder, *args, **kw)
     except Exception as e:
         # Fallback to the to_json filter
         display.warning(u'Unable to convert data using to_nice_json, falling back to to_json: %s' % to_text(e))
@@ -185,9 +185,22 @@ def ternary(value, true_val, false_val, none_val=None):
         return false_val
 
 
-def regex_escape(string):
+def regex_escape(string, re_type='python'):
     '''Escape all regular expressions special characters from STRING.'''
-    return re.escape(string)
+    if re_type == 'python':
+        return re.escape(string)
+    elif re_type == 'posix_basic':
+        # list of BRE special chars:
+        # https://en.wikibooks.org/wiki/Regular_Expressions/POSIX_Basic_Regular_Expressions
+        return regex_replace(string, r'([].[^$*\\])', r'\\\1')
+    # TODO: implement posix_extended
+    # It's similar to, but different from python regex, which is similar to,
+    # but different from PCRE.  It's possible that re.escape would work here.
+    # https://remram44.github.io/regex-cheatsheet/regex.html#programs
+    elif re_type == 'posix_extended':
+        raise AnsibleFilterError('Regex type (%s) not yet implemented' % re_type)
+    else:
+        raise AnsibleFilterError('Invalid regex type (%s)' % re_type)
 
 
 def from_yaml(data):
@@ -497,7 +510,7 @@ def dict_to_list_of_dict_key_value_elements(mydict, key_name='key', value_name='
     ''' takes a dictionary and transforms it into a list of dictionaries,
         with each having a 'key' and 'value' keys that correspond to the keys and values of the original '''
 
-    if not isinstance(mydict, MutableMapping):
+    if not isinstance(mydict, Mapping):
         raise AnsibleFilterError("dict2items requires a dictionary, got %s instead." % type(mydict))
 
     ret = []
@@ -594,7 +607,7 @@ class FilterModule(object):
             'bool': to_bool,
             'to_datetime': to_datetime,
 
-            # date formating
+            # date formatting
             'strftime': strftime,
 
             # quote string for shell usage
@@ -603,7 +616,7 @@ class FilterModule(object):
             # hash filters
             # md5 hex digest of string
             'md5': md5s,
-            # sha1 hex digeset of string
+            # sha1 hex digest of string
             'sha1': checksum_s,
             # checksum of string as used by ansible for checksumming files
             'checksum': checksum_s,

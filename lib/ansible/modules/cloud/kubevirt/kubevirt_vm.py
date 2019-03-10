@@ -56,6 +56,12 @@ options:
             - Works only with C(state) I(present) and I(absent).
         type: bool
         default: false
+    datavolumes:
+        description:
+            - "DataVolumes are a way to automate importing virtual machine disks onto pvcs during the virtual machine's
+               launch flow. Without using a DataVolume, users have to prepare a pvc with a disk image before assigning
+               it to a VM or VMI manifest. With a DataVolume, both the pvc creation and import is automated on behalf of the user."
+        type: list
 
 extends_documentation_fragment:
   - k8s_auth_options
@@ -81,6 +87,7 @@ EXAMPLES = '''
       name: myvm
       namespace: vms
       memory: 64M
+      cpu_cores: 1
       disks:
         - name: containerdisk
           volume:
@@ -159,6 +166,7 @@ EXAMPLES = '''
       memory: 1024M
       cloud_init_nocloud:
         userData: |-
+          #cloud-config
           password: fedora
           chpasswd: { expire: False }
       disks:
@@ -180,9 +188,9 @@ EXAMPLES = '''
 RETURN = '''
 kubevirt_vm:
   description:
-    - The virtual machine dictionary specification returned by the API.
-    - "This dictionary contains all values returned by the KubeVirt API all options
-       are described here U(https://kubevirt.io/api-reference/master/definitions.html#_v1_virtualmachine)"
+      - The virtual machine dictionary specification returned by the API.
+      - "This dictionary contains all values returned by the KubeVirt API all options
+         are described here U(https://kubevirt.io/api-reference/master/definitions.html#_v1_virtualmachine)"
   returned: success
   type: complex
   contains: {}
@@ -191,6 +199,8 @@ kubevirt_vm:
 
 import copy
 import traceback
+
+from ansible.module_utils.k8s.common import AUTH_ARG_SPEC, COMMON_ARG_SPEC
 
 try:
     from openshift.dynamic.client import ResourceInstance
@@ -203,9 +213,7 @@ from ansible.module_utils.kubevirt import (
     virtdict,
     KubeVirtRawModule,
     VM_COMMON_ARG_SPEC,
-    API_VERSION,
 )
-
 
 VM_ARG_SPEC = {
     'ephemeral': {'type': 'bool', 'default': False},
@@ -216,6 +224,7 @@ VM_ARG_SPEC = {
         ],
         'default': 'present'
     },
+    'datavolumes': {'type': 'list'},
 }
 
 
@@ -224,7 +233,8 @@ class KubeVirtVM(KubeVirtRawModule):
     @property
     def argspec(self):
         """ argspec property builder """
-        argument_spec = copy.deepcopy(AUTH_ARG_SPEC)
+        argument_spec = copy.deepcopy(COMMON_ARG_SPEC)
+        argument_spec.update(copy.deepcopy(AUTH_ARG_SPEC))
         argument_spec.update(VM_COMMON_ARG_SPEC)
         argument_spec.update(VM_ARG_SPEC)
         return argument_spec
@@ -234,7 +244,7 @@ class KubeVirtVM(KubeVirtRawModule):
         self.patch_resource(resource, definition, existing, self.name, self.namespace, merge_type='merge')
 
         if wait:
-            resource = self.find_resource('VirtualMachineInstance', self.api_version, fail=True)
+            resource = self.find_supported_resource('VirtualMachineInstance')
             w, stream = self._create_stream(resource, self.namespace, wait_timeout)
 
         if wait and stream is not None:
@@ -264,13 +274,13 @@ class KubeVirtVM(KubeVirtRawModule):
         wait_timeout = self.params.get('wait_timeout')
         resource_version = self.params.get('resource_version')
 
-        resource_vm = self.find_resource('VirtualMachine', self.api_version)
+        resource_vm = self.find_supported_resource('VirtualMachine')
         existing = self.get_resource(resource_vm)
         if resource_version and resource_version != existing.metadata.resourceVersion:
             return False
 
         existing_running = False
-        resource_vmi = self.find_resource('VirtualMachineInstance', self.api_version)
+        resource_vmi = self.find_supported_resource('VirtualMachineInstance')
         existing_running_vmi = self.get_resource(resource_vmi)
         if existing_running_vmi and hasattr(existing_running_vmi.status, 'phase'):
             existing_running = existing_running_vmi.status.phase == 'Running'
@@ -300,7 +310,8 @@ class KubeVirtVM(KubeVirtRawModule):
         # Execute the CURD of VM:
         template = definition['spec']['template']
         kind = 'VirtualMachineInstance' if ephemeral else 'VirtualMachine'
-        result = self.execute_crud(kind, definition, template)
+        dummy, definition = self.construct_vm_definition(kind, definition, template)
+        result = self.execute_crud(kind, definition)
         changed = result['changed']
 
         # Manage state of the VM:
@@ -320,7 +331,6 @@ class KubeVirtVM(KubeVirtRawModule):
 def main():
     module = KubeVirtVM()
     try:
-        module.api_version = API_VERSION
         module.execute_module()
     except Exception as e:
         module.fail_json(msg=str(e), exception=traceback.format_exc())

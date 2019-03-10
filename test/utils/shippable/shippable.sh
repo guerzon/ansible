@@ -1,6 +1,6 @@
-#!/bin/bash -eux
+#!/usr/bin/env bash
 
-set -o pipefail
+set -o pipefail -eux
 
 declare -a args
 IFS='/:' read -ra args <<< "$1"
@@ -14,7 +14,7 @@ docker images quay.io/ansible/*
 docker ps
 
 for container in $(docker ps --format '{{.Image}} {{.ID}}' | grep -v '^drydock/' | sed 's/^.* //'); do
-    docker rm -f "${container}"
+    docker rm -f "${container}" || true  # ignore errors
 done
 
 docker ps
@@ -75,7 +75,7 @@ function cleanup
 {
     if find test/results/coverage/ -mindepth 1 -name '.*' -prune -o -print -quit | grep -q .; then
         # for complete on-demand coverage generate a report for all files with no coverage on the "other" job so we only have one copy
-        if [ "${COVERAGE}" ] && [ "${CHANGED}" == "" ] && [ "${test}" == "other" ]; then
+        if [ "${COVERAGE}" ] && [ "${CHANGED}" == "" ] && [ "${test}" == "sanity/1" ]; then
             stub="--stub"
         else
             stub=""
@@ -116,6 +116,12 @@ function cleanup
 
 trap cleanup EXIT
 
-ansible-test env --dump --show --color -v
+if [[ "${COVERAGE:-}" ]]; then
+    timeout=60
+else
+    timeout=45
+fi
+
+ansible-test env --dump --show --timeout "${timeout}" --color -v
 
 "test/utils/shippable/${script}.sh" "${test}"
